@@ -120,6 +120,8 @@ WebRoute *FetchLibrary(char *route_path, char *path, char **flags) {
             return ((WebRoute){});
         }
 
+        // iterate to add the object to the structs r->Objects[idx]->Handle
+
         lines.Destruct(&lines);
         compile_cmd.Destruct(&compile_cmd);
     }
