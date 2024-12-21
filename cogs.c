@@ -57,7 +57,7 @@ typedef struct WebRoute {
 typedef struct Routes {
     WebRoute **arr;
     long idx;
-}
+} Routes;
 
 char *fetch_c_file(char *filepath) {
     if(!filepath)
@@ -169,8 +169,10 @@ WebRoute *FetchLibrary(char *route_path, char *path, char **flags) {
         .Data = dlsym(r->Handle, handler_fn.data),
     };
 
-    if(!r->Objects[1]->Data) {
-        r->Objects[1]->Type = T_ERR;
+    char *error = dlerror();
+    if(error) {
+        r->Type = T_ERR;
+        dlclose(r->Handle);
         printf("[ ~ ] Error, Trying to get the route handler function from %s....!\n", path);
     }
 
@@ -186,6 +188,7 @@ int AddWebRoute(Routes *r, WebRoute *wr) {
     if(!r || !rw)
         return 0;
 
+    r->arr[r->idx] = (void *)malloc(sizeof(void));
     r->arr[r->idx] = wb;
     r->idx++;
     r->arr = (WebRoute **)realloc(r->arr, sizeof(WebRoute *) * (r->idx + 1));
@@ -203,11 +206,40 @@ Routes *InitRouter() {
     return r;
 }
 
+void DestructRouter(Routes *r) {
+    if(!r)
+        return;
+
+    for(int i = 0; i < r->idx; i++) {
+        if(!r->arr[i])
+            break;
+
+        
+        for(int obj = 0; obj < r->arr[i]->ObjectCount; obj++) {
+            free(r->arr[i]->Objects[ob]->Name);
+            free(r->arr[i]->Objects[ob]);
+        }
+
+        dlclose(r->arr[i]->Handle);
+        free(r->arr[i]);
+    }
+}
+
 /* A hot-reloading cogs system used as a router for web servers in C */
 int main() {
     Routes *r = InitRouter();
     WebRoute *index = FetchLibrary("/", "/test.c", (const char *[]){"-lpthread", NULL});
     WebRoute *contact = FetchLibrary("/contact", "/contact.so", NULL);
+
+    int add_chk = AddWebRoute(r, index);
+    if(!add_chk)
+        return 0;
+
+    add_chk = AddWebRoute(r, contact);
+    if(!add_chk)
+        return 0;
+
+    
 
     return 0;
 }
