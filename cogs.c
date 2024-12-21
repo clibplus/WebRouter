@@ -1,3 +1,12 @@
+/*
+*
+*    == [ Web Router ] ==
+*
+* @description: A web path router used for cLib+/Websign's web server
+* @author: Algo1337
+* @since: 12/19/2024
+*
+*/
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -7,7 +16,7 @@
 #include <OS/utils.h>
 
 typedef enum Object_T {
-    NO_T            = 74930
+    T_ERR           = 74930
     INT_T           = 74931,
     INT_PTR_T       = 74932,
     LONG_T          = 74933,
@@ -16,15 +25,16 @@ typedef enum Object_T {
     CHAR_PTR_T      = 74936,
     CHAR_DPTR_T     = 74937,
 
-    VOID_FN_T       = 74938
-    INT_FN_T        = 74939,
-    INT_PTR_FN_T    = 74940,
-    CHAR_FN_T       = 74941,
-    CHAR_PTR_FN_T   = 74942,
-    CHAR_DPTR_FN_T  = 74943,
-    LONG_FN_T       = 74944,
-    LONG_PTR_FN_T   = 74945,
-    OTHER_T         = 74946
+    VOID_FN_T       = 74938,
+    VOID_PTR_FN_T   = 74939,
+    INT_FN_T        = 74940,
+    INT_PTR_FN_T    = 74941,
+    CHAR_FN_T       = 74942,
+    CHAR_PTR_FN_T   = 74943,
+    CHAR_DPTR_FN_T  = 74944,
+    LONG_FN_T       = 74945,
+    LONG_PTR_FN_T   = 74946,
+    OTHER_T         = 74947
 } Object_T;
 
 typedef struct Object {
@@ -34,6 +44,7 @@ typedef struct Object {
 } Object;
 
 typedef struct WebRoute {
+    char        *Url;
     char        *Path;          // Path to file
     Object      **Objects;      // All objects in file
     long        ObjectCount;    // Count Of Objects Found
@@ -72,7 +83,7 @@ char *fetch_c_file(char *filepath) {
 /*
     Provide a library filepath using .c or .so files
 */
-WebRoute *FetchLibrary(char *path, char **flags) {
+WebRoute *FetchLibrary(char *route_path, char *path, char **flags) {
     if(!path)
         return ((WebRoute){});
 
@@ -80,6 +91,7 @@ WebRoute *FetchLibrary(char *path, char **flags) {
     String c_file = NewString(fetch_c_file(path));
     WebRoute *r = (WebRoute *)malloc(sizeof(WebRoute));
     *r = (WebRoute){
+        .Url = route_path,
         .Path = strdup(filepath.data),
         .Flags = flags
     };
@@ -90,7 +102,7 @@ WebRoute *FetchLibrary(char *path, char **flags) {
         lines.Merge(&lines, (void **)c_file.Split(&c_file, "\n"));
 
         for(int i = 0; i < lines.idx; i++) {
-            // Find Non-Nested C-Type Starting Lines for Objects/Functions
+            // Find Non-Tab-Nested C-Type Starting Lines for Objects/Functions
         }
 
         /* Compile using flags */
@@ -145,8 +157,10 @@ WebRoute *FetchLibrary(char *path, char **flags) {
         .Data = dlsym(r->Handle, design_fn.data),
     };
 
-    if(!r->Objects[0]->Data)
+    if(!r->Objects[0]->Data) {
+        r->Objects[0]->Type = T_ERR;
         printf("[ ~ ] Error, Trying to get the route designer function from %s....!\n", path);
+    }
 
     r->Objects[1] = (Object *)malloc(sizeof(Object));
     *r->Objects[1] = (Object){
@@ -155,8 +169,10 @@ WebRoute *FetchLibrary(char *path, char **flags) {
         .Data = dlsym(r->Handle, handler_fn.data),
     };
 
-    if(!r->Objects[1]->Data)
+    if(!r->Objects[1]->Data) {
+        r->Objects[1]->Type = T_ERR;
         printf("[ ~ ] Error, Trying to get the route handler function from %s....!\n", path);
+    }
 
     design_fn.Destruct(&design_fn);
     handler_fn.Destruct(&handler_fn);
@@ -164,6 +180,17 @@ WebRoute *FetchLibrary(char *path, char **flags) {
     c_file.Destruct(&c_file);
     
     return r;
+}
+
+int AddWebRoute(Routes *r, WebRoute *wr) {
+    if(!r || !rw)
+        return 0;
+
+    r->arr[r->idx] = wb;
+    r->idx++;
+    r->arr = (WebRoute **)realloc(r->arr, sizeof(WebRoute *) * (r->idx + 1));
+
+    return 1;
 }
 
 Routes *InitRouter() {
@@ -179,8 +206,8 @@ Routes *InitRouter() {
 /* A hot-reloading cogs system used as a router for web servers in C */
 int main() {
     Routes *r = InitRouter();
-    WebRoute *index = FetchLibrary("/test.c", (const char *[]){"-lpthread", "-lwebsign", "-lstr", "-larr", "-lmap", NULL});
-    WebRoute *contact = FetchLibrary("/contact.so", NULL);
+    WebRoute *index = FetchLibrary("/", "/test.c", (const char *[]){"-lpthread", NULL});
+    WebRoute *contact = FetchLibrary("/contact", "/contact.so", NULL);
 
     return 0;
 }
