@@ -16,14 +16,15 @@ typedef enum Object_T {
     CHAR_PTR_T      = 74936,
     CHAR_DPTR_T     = 74937,
 
-    INT_FN_T        = 74938,
-    INT_PTR_FN_T    = 74939,
-    CHAR_FN_T       = 74940,
-    CHAR_PTR_FN_T   = 74941,
-    CHAR_DPTR_FN_T  = 74942,
-    LONG_FN_T       = 74943,
-    LONG_PTR_FN_T   = 74944,
-    OTHER_T         = 74945
+    VOID_FN_T       = 74938
+    INT_FN_T        = 74939,
+    INT_PTR_FN_T    = 74940,
+    CHAR_FN_T       = 74941,
+    CHAR_PTR_FN_T   = 74942,
+    CHAR_DPTR_FN_T  = 74943,
+    LONG_FN_T       = 74944,
+    LONG_PTR_FN_T   = 74945,
+    OTHER_T         = 74946
 } Object_T;
 
 typedef struct Object {
@@ -35,6 +36,7 @@ typedef struct Object {
 typedef struct WebRoute {
     char        *Path;          // Path to file
     Object      **Objects;      // All objects in file
+    long        ObjectCount;    // Count Of Objects Found
     char        **Flags;        // Compile flags
     void        *Handle;        // lib Handle
     struct stat  file_stat;     // File Info
@@ -74,16 +76,15 @@ WebRoute *FetchLibrary(char *path, char **flags) {
     if(!path)
         return ((WebRoute){});
 
-    WebRoute *r = (WebRoute *)malloc(sizeof(WebRoute));
-    *r = (WebRoute){
-        .Path = path,
-        .Flags = flags
-    };
-
     String filepath = NewString(path);
     String c_file = NewString(fetch_c_file(path));
+    WebRoute *r = (WebRoute *)malloc(sizeof(WebRoute));
+    *r = (WebRoute){
+        .Path = strdup(filepath.data),
+        .Flags = flags
+    };
     
-    /* Parse a C files for objects/function before compilation! */
+    /* Parse a C file for objects/functions before compilation! */
     if(filepath.Contains(&filepath, ".c")) {
         Array lines = NewArray(NULL);
         lines.Merge(&lines, (void **)c_file.Split(&c_file, "\n"));
@@ -95,19 +96,74 @@ WebRoute *FetchLibrary(char *path, char **flags) {
         /* Compile using flags */
         String compile_cmd = NewString("gcc -c");
         compile_cmd.AppendArray(&compile_cmd, (const char *[]){path, " ", NULL});
-        compile_cmd.AppendArray(&compile_cmd, flags);
+
+        if(flags)
+            compile_cmd.AppendArray(&compile_cmd, flags);
 
         char *resp = Execute(compile_cmd);
         if(!resp) {
             printf("[ x ] Error, Unable to compile the C code....!\n");
+            lines.Destruct(&lines);
+            compile_cmd.Destruct(&compile_cmd);
             return ((WebRoute){});
         }
+
+        lines.Destruct(&lines);
+        compile_cmd.Destruct(&compile_cmd);
     }
 
     /* 
+        Load .so lib!
+
         Retrieve functions starting with the following symbol: design_<filename>
         Or ends with the following symbol: <filename>_handler
     */
+    r->Handle = dlopen(path, RTLD_LAZY);
+    if(!r->Handle)
+        return ((WebRoute){});
+
+    if(filepath.Contains(&filepath, ".so"))
+        for(int i = 0; i < 3; i++)
+            filepath.TrimAt(&filepath, filepath.idx - 1);
+
+            
+    if(filepath.Contains(&filepath, "/"))
+            filepath.TrimAt(&filepath, 0);
+    
+    r->Objects = (void **)malloc(sizeof(void *) * 2);
+
+    String design_fn = NewString("design_");
+    String handler_fn = NewString(filepath.data);
+
+    design_fn.AppendString(&design_fn, filepath.data);
+    handler_fn.AppendString(&handler_fn, "_handler");
+
+    r->Objects[0] = (Object *)malloc(sizeof(Object));
+    *r->Objects[0] = (Object){
+        .Name = design_fn.data,
+        .Type = VOID_FN_T,
+        .Data = dlsym(r->Handle, design_fn.data),
+    };
+
+    if(!r->Objects[0]->Data)
+        printf("[ ~ ] Error, Trying to get the route designer function from %s....!\n", path);
+
+    r->Objects[1] = (Object *)malloc(sizeof(Object));
+    *r->Objects[1] = (Object){
+        .Name = handler_fn.data,
+        .Type = VOID_FN_T,
+        .Data = dlsym(r->Handle, handler_fn.data),
+    };
+
+    if(!r->Objects[1]->Data)
+        printf("[ ~ ] Error, Trying to get the route handler function from %s....!\n", path);
+
+    design_fn.Destruct(&design_fn);
+    handler_fn.Destruct(&handler_fn);
+    filepath.Destruct(&filepath);
+    c_file.Destruct(&c_file);
+    
+    return r;
 }
 
 Routes *InitRouter() {
@@ -124,8 +180,7 @@ Routes *InitRouter() {
 int main() {
     Routes *r = InitRouter();
     WebRoute *index = FetchLibrary("/test.c", (const char *[]){"-lpthread", "-lwebsign", "-lstr", "-larr", "-lmap", NULL});
-
-
+    WebRoute *contact = FetchLibrary("/contact.so", NULL);
 
     return 0;
 }
